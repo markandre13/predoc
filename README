@@ -1,0 +1,22 @@
+
+                                 PReDoc 0.99
+                an editor for proof-reading digital documents
+
+               Written & Copyright (C) 1998 by Mark-André Hopf
+
+
+Requirements (full-build):
+
+- Linux 2.1.130 or higher
+- GNU C Library 2.0.6 or higher
+- LinuxThreads 2.0.6 or higher
+- libpng 1.0.1
+- zlib 1.1.1
+- Cygnus Solutions EGCS 1.1.1 C++ Compiler
+- GNU make
+- Java Development Kit 1.1.x or higher
+- IBM Jikes Java Compiler 0.41 or higher (optional)
+
+Compiling:
+
+Just run `make'.

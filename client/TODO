@@ -1,0 +1,64 @@
+Priorität 1
+^^^^^^^^^^^
+
+- öffnen von Verzeichnissen
+- Warnung bei nicht gespeichert
+- speichern auf dem Server
+
+
++ S.22,23 scheinen den Scanner in eine Endlosschleife zu bringen. Höchst
+  erstaunlich!!!
+- Warnen beim Beenden des Programms wenn Daten noch nicht gespeichert
+  wurden
++ Korrekturdaten erst einmal in eine einzelne Datei speichern bevor Du
+  Dir ein eigenes Datenformat ausdenkst
++ Wenn die Markierung nur ein Strich ist, kann man sie kaum noch selektieren
++ In der Waagerechten am Mauszeiger ausrichten und die Scaninformation nur
+  nutzen um auf einer einstellbaren Distanzgroesse selbststaendig in der
+  Waagerechten auszurichten
+  (bloeder Satz, hier schreibt jemand der ueber 24h nicht geschlafen hat :)
+  )
++ Bei den Seiten wie in GhostView blättern können (ein-/ausschaltbar?)
+  Evtl. erhält man aber den gleichen Effekt, wenn man sich das
+  OverView Fenster links neben das Hauptfenster setzt, die Frage ist nur
+  welches Fenster zum Wechsel benutzt wird wenn wir mehrere Sichten des
+  Dokuments offen haben.
+  Evtl. mal Acrobat anschauen und vielleicht das Overview Fenster doch
+  nicht als TopLevel Fenster implementieren.
+- das Programm sollte auch komplett ueber die Tastatur steuerbar sein:
+  - Cursortasten im Hauptfenster
+  - Page Up & Down Tasten im Hauptffenster
++ Zoom Knöpfe sind noch funktionslos
+- Auswahl von Seite durch Eingabe von Nummer
+- Schließen der alten Datei vor dem Öffnen der neuen
+- Speichern auf dem Server
+
+
+Priorität 2
+^^^^^^^^^^^
+- Über mehrere Seiten verteilte Kommentare
++ die DIN Korrekturzeichen muessen nicht auf Teufel komm raus hinein,
+  besonders nicht, wenn das Interface leidet
+  Was Cap aber wichtig ist, dass der Nutzer unterschiedliche Korrektur-
+  typen zur Auswahl hat, damit er sieht, auf was er beim Korrigieren
+  achten soll.
+  Z.B. könnte man die Darstellung der Korrektur selbst erweitern und
+  editierbar machen, je nach gewählter Korrekturart.
++ Im Popup oben in der Hierarchie Menuepunkte zum Blaettern mit
+  einbauen
++ das Zoomen sollte auch ueber Tasten und evtl. mit einem Lupencursor
+  machbar sein (an dieser Stelle fiel mir dann eine Toolbar ein)
+- evtl. neben dem Dokument noch ein Fenster mit weiteren Hinweisen auf die
+  Korrekturen, wie z.B senkrechte Striche, Typ, ... halt was so bei der
+  DIN sonstwas zu sehen ist
++ TFormLayout scheint einen Bug zu haben
+  Nein, das AWT kommt nicht mit geschachtelten java.awt.Container Objekten klar
+- Ein Übersichtsknopf
+- Zoomen im Editorfenster
+- Scannen im Server
+- Zoomen im Server
+- Bessere Paralellisierung im Server
+- Man sollte das Korrekturfenster nicht schließen müßen um eine andere
+  Korrektur öffnen zu können, sondern lediglich eine andere Korrektur
+  anklicken zu brauchen. Die wäre aus der Sicht des Autoren evtl. einfacher
+  zu handhaben.

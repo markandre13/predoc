@@ -1,0 +1,220 @@
+#!/usr/bin/perl
+
+# javadepend -- create makefile dependencies for java source files
+# Written 1998 by Mark-André Hopf <hopf@informatik.uni-rostock.de>
+# Copyright (C) 1998 by Mark-André Hopf
+#
+# (Insert GPL v2 here)
+#
+#----------------------------------------------------------------------------
+
+# ATTENTION: don't know how to handle circular dependencies in JAVA which
+#            is very important :(
+
+# what this program is doing
+# - it searches for all "*.java" files in the current directory tree
+# - comments and string contants are removed from the file as they might
+#   confuse the scanner
+# - each file is scanned for class and interface names
+# - dependencies are created by scanning each file for class and interface
+#   names
+# this is a rather crude aproach but was easy to implement (and i hope it's
+# fast)
+
+# global variables:
+#   created by scan_dir:
+#     @src_file array of source files
+#     @cls_name array of class names with package name
+#     @cls_shrt array of class names without package name
+#     @cls_file array of files where each class name was defined
+#----------------------------------------------------------------------------
+
+# doesn't create:
+# server/TDocument.class: server/TPage.class
+
+sub main
+{
+	scan_dir(".");
+	printf("found %i classes in %i files\n", $#cls_name+1, $#src_file+1);
+	
+	open(OUT, "> .depend");
+	print OUT "# GENERATED WITH javadepend\n";
+	print OUT "# Written 1998 by Mark-André Hopf\n\n";
+	foreach $file (@src_file) {
+		$dep = scan_file($file);
+		print OUT "$dep\n";
+	}
+	close(OUT);
+}
+
+sub scan_dir
+{
+	local (@files, $file, $dir, $f);
+
+	$dir = $_[0];
+
+	opendir(DIR, $dir);
+	@files = readdir(DIR);
+	closedir(DIR);
+
+	foreach $file (@files) {
+		$f = "$dir/$file";
+		if ($file =~ /^\./) {
+			next;
+		}
+		if (-d $f) {
+			scan_dir($f);
+		} else { 
+			if ($file =~ /(.*)\.java$/) {
+				scan_classes($f);
+			}
+		}
+	}
+}
+
+sub read_file
+{
+	local($file, $data, $left);
+	$file = $_[0];
+	
+	# copy file into $data and remove C++ style comments
+	#----------------------------------------------------
+	open(IN, "< $file");
+	while(<IN>) {
+		s/^(.*)\/\/.*$/$1/;
+		$data = "$data$_";
+	}
+	# $data =~ s/\/\*.*\s*\*\//xxx/;
+
+	# remove C style comments from $data
+	#----------------------------------------------------
+	while($data =~ /^([\s|\S]*)\/\*(([\s|\S]*))/) {
+		$left = $1;
+		$2 =~ /^([\s|\S]*)\*\/(([\s|\S]*))/;
+		$data = "$left$2";
+	}
+
+	# remove string contants
+	#----------------------------------------------------
+	$data =~ s/\\\"/''/g;
+	
+	while($data =~ /^([^"]*)\"(([\s|\S]*))/) {
+		$left = $1;
+		$2 =~ /^([^"]*)\"(([\s|\S]*))/;
+		$data = "$left STRING $2\n";
+	}
+
+	return $data;
+}
+
+sub scan_classes
+{
+	local ($file, $data, $package);
+	$file = $_[0];
+	
+	# remove trailing `./'
+	if ($file =~ /^\.\/(.*)/) {
+		$file = $1;
+	}
+	
+	$src_file[$#src_file+1] = $file;
+	
+	$data = read_file($file);
+	
+	# get package name
+	#----------------------------------------------------
+	$package = "";
+	if ($data =~ /package\s*(.*)\s*;/) {
+		$package = "$1.";
+	}
+	
+	# search for classes and interfaces
+	#----------------------------------------------------
+	while($data =~ s/class\s+(\S+)//) {
+		$cls_file[$#cls_file+1]=$file;
+		$cls_name[$#cls_name+1]="$package$1";
+		$cls_shrt[$#cls_shrt+1]=$1;
+	}
+
+	while($data =~ s/interface\s+(\S+)//) {
+		$cls_file[$#cls_file+1]=$file;
+		$cls_name[$#cls_name+1]="$package$1";
+		$cls_shrt[$#cls_shrt+1]=$1;
+	}
+}
+
+sub scan_file
+{
+	local ($file, $data, $imp, $i, @name, @file);
+	$file = $_[0];
+	$data = read_file($file);
+	$dep = "";
+	
+	# extract all `import' statements and build list of
+	# known class names
+	#----------------------------------------------------
+	@name = @cls_name;
+	@file = @cls_file;
+	while($data =~ s/([\s|\S]*)import\s*(.*)\s*;([\s|\S]*)/$1$3/) {
+		$imp = $2;
+		$i = 0;
+		if ($imp =~ /(.*)\*/) {
+			# front match
+			$imp = $1;
+#			print "import $imp\n";
+			foreach $cls (@cls_name) {
+				if ($cls =~ /^$imp(.*)$/ && !($1 =~ /\./) ) {
+#					print "-> $cls\n";
+#					print " > $cls_shrt[$i]\n";
+					$name[$#cls_name+1] = $cls_shrt[$i];
+					$file[$#cls_file+1] = $cls_file[$i];
+				}
+				$i++;
+			}
+		} else {
+#			print "import $imp\n";
+			foreach $cls (@cls_name) {
+#				print "?      $cls\n";
+				if ($cls =~ /^$imp$/) {
+#					print "-> $cls\n";
+#					print " > $cls_shrt[$i]\n";
+					$name[$#cls_name+1] = $cls_shrt[$i];
+					$file[$#cls_file+1] = $cls_file[$i];
+					$dep=" $cls_file[$i]";
+				}
+				$i++;
+			}
+		}
+	}
+	
+	# scan file for known class names and build dependecies
+	#----------------------------------------------------
+
+	# just scanning doesn't help
+	# statements like `public static TDDocumentBuffer documents;'
+	# don't need dependencies, but:
+	# - new Class
+	# - extends Class
+	# - implements Class
+	# - import Class	// full class path!
+	# - Class.Name
+
+	$i=0;
+	foreach $cls (@name) {
+#		print "searching $cls\n";
+		if ($data =~ /\bnew\s$cls\b/ ||
+		    $data =~ /\bextends\s$cls\b/ ||
+		    $data =~ /\bimplements\s$cls\b/ ||
+		    $data =~ /\b$cls\.\S*\b/
+		  ) {
+			$dep = "$dep $file[$i]";
+		}
+		$i++;
+	}
+	$dep =~ s/$file//;
+	$dep = "$file:$dep";
+	$dep =~ s/\.java\b/\.class/g;
+	return $dep;
+}
+
+main();

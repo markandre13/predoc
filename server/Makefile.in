@@ -1,0 +1,68 @@
+############################################################################
+#                                                                          #
+# TOAD - a thing on a desk                                                 #
+# Master Makefile for Programs                                             #
+# (C)opyright 1996-98 by Mark-André Hopf                                   #
+#                                                                          #
+############################################################################
+
+PRGFILE		= predocd
+SRCS		= main.cc predoc.cc http.cc smooth.cc thread.cc binfile.cc
+
+MAKE		= @make@
+CC 		= @CXX@
+DEFINES 	= @DEFS@ -DENABLE_SMOOTHING
+OBJEXT		= @OBJEXT@
+MAKEDEP		= $(CC) -M
+
+CFLAGS		+= -frtti -Wall -Wwrite-strings -Woverloaded-virtual -g
+
+X11_INC		= @x_includes@
+X11_LIB		= @x_libraries@
+
+TOAD_INC	= @toad_includes@
+TOAD_LIB	= @toad_libraries@
+
+INCDIRS		+=
+LIBDIRS		+=
+
+LIBS		+=
+
+OBJS		= $(SRCS:.cc=.o)
+
+include ../conf/Makefile.conf
+
+all:
+	$(MAKE) $(PRGFILE)
+
+#---------------------------------------------------------------------------
+# Compiling
+#---------------------------------------------------------------------------
+.SUFFIXES: .cc
+
+.cc.o:
+	@echo compiling $*.cc ...
+	@$(CC) $(CFLAGS) $(DEFINES) $(INCDIRS) $*.cc -c -o $*.o
+
+#---------------------------------------------------------------------------
+# Linking
+#---------------------------------------------------------------------------
+$(PRGFILE): $(OBJS)
+	@echo linking $(PRGFILE) ...
+	@$(CC) $(OBJS) -o $(PRGFILE) $(LIBDIRS) $(LIBS)
+	@echo Ok
+
+#---------------------------------------------------------------------------
+# Xtras
+#---------------------------------------------------------------------------
+
+predocd: class/predoc.jar
+
+class/predoc.jar:
+	cd class ; jar -cf predoc.jar `find . -name "*.class"`
+
+clean:
+	-@find . -name "*.png" -exec rm {} \;
+	-rm -f *.o *~ DEADJOE core
+	-rm -f $(PRGFILE)
+	-rm -f class/predoc.jar

@@ -1,0 +1,38 @@
+#!/bin/sh
+
+echo "determinig the size of the source..."
+
+s1=0
+for x in `find . -name "*.java"`
+do
+	n=`wc -c $x | head -c 7 -`
+	let s1=$s1+$n
+done
+
+s2=0
+for x in `find com -name "*.java"`
+do
+	n=`wc -c $x | head -c 7 -`
+	let s2=$s2+$n
+done
+
+let s=$s1-$s2
+let s=$s/1024
+echo "${s}kB"
+
+s1=0
+for x in `find . -name "*.java"`
+do
+	n=`wc -l $x | head -c 7 -`
+	let s1=$s1+$n
+done
+
+s2=0
+for x in `find com -name "*.java"`
+do
+	n=`wc -l $x | head -c 7 -`
+	let s2=$s2+$n
+done
+
+let s=$s1-$s2
+echo "${s} lines"

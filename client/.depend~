@@ -1,0 +1,77 @@
+# GENERATED WITH javadepend
+# Written 1998 by Mark-André Hopf
+
+TSelector.class: draw/TDrawingData.class Main.class TDlgSelection.class global.class
+Main.class:  server/socket/TServerSocket.class TDDocumentBuffer.class global.class TDocumentView.class TDlgOpenDocument.class TDlgDebug.class
+server/TDirectory.class:
+server/TPage.class:
+server/TDocument.class: server/TPage.class
+server/EBitmapType.class:
+server/TServer.class: server/TDirectory.class
+server/socket/TDirectorySocket.class:
+server/socket/TDocumentSocket.class: server/socket/TServerConnection.class server/socket/TServerConnection.class
+server/socket/TPageSocket.class: server/socket/TServerConnection.class server/socket/TServerConnection.class
+server/socket/TServerSocket.class: server/TServer.class
+server/socket/TServerConnection.class:
+TDDocViewState.class: common/TState.class TDDocumentBuffer.class global.class TDScaledImage.class common/TState.class
+TDDocument.class:
+draw/TToggleState.class:
+draw/TToggleButton.class:
+draw/TDraw.class:
+draw/TToolButton.class:
+draw/TFigure.class:
+draw/TFigLine.class:
+draw/TFigRect.class:
+draw/TFigCirc.class:
+draw/TFigText.class:
+draw/TFigPoly.class:
+draw/TFigStaticImage.class:
+draw/TScrolledArea.class:
+draw/TTool.class:
+draw/TToolSelect.class:
+draw/TToolDrawLine.class:
+draw/TToolDrawRect.class:
+draw/TToolDrawCirc.class:
+draw/TToolDrawPoly.class:
+draw/TToolDrawText.class:
+draw/TDrawingData.class:
+draw/TDrawingArea.class:
+TDDocumentBuffer.class: common/TState.class global.class common/TState.class
+TDPage.class: common/TState.class Main.class TDPageCorrection.class global.class TThreadImgLoad.class TThreadImgScan.class TDScaledImage.class
+TDPageCorrection.class: draw/TDrawingData.class 
+TDScanData.class:
+TDlgSelection.class: Main.class
+TDocViewPort.class: TSelector.class TDDocViewState.class  global.class common/TStateListener.class
+global.class:
+com/visualtek/png/PNGColorRowHandler.class:
+com/visualtek/png/PNGData.class:
+com/visualtek/png/PNGDataDecoder.class:
+com/visualtek/png/PNGDataEncoder.class:
+com/visualtek/png/PNGDecoder.class:
+com/visualtek/png/PNGEncoder.class:
+com/visualtek/png/PNGException.class:
+com/visualtek/png/PNGGrayRowHandler.class:
+com/visualtek/png/PNGInfo.class:
+com/visualtek/png/PNGProducer.class:
+com/visualtek/png/PNGRowHandler.class:
+com/visualtek/png/PNGTrueColorRowHandler.class:
+common/TRectangle.class:
+common/TPoint.class:
+common/TPolygon.class: common/TPoint.class common/TPoint.class
+common/TFormLayout.class:
+common/TMenuHelper.class:
+common/TPopup.class: common/TMenuHelper.class common/TMenuHelper.class
+common/TMenuBar.class: common/TMenuHelper.class common/TMenuHelper.class
+common/TState.class:
+common/TStateListener.class:
+TDocumentView.class: TDDocViewState.class TDocViewPort.class TStatusBar.class
+TDlgOpenDocument.class: Main.class TDDocument.class global.class TDRemotePage.class
+TDlgDebug.class: Main.class global.class
+TDRemotePage.class: TDPage.class TThreadImgDownload.class
+TThreadImgLoad.class: com/visualtek/png/PNGDecoder.class Main.class com/visualtek/png/PNGDecoder.class
+TThreadImgScale.class: Main.class
+TThreadImgScan.class: Main.class TDScanData.class
+predoc.class: Main.class
+TStatusBar.class: TDDocViewState.class global.class common/TStateListener.class
+TThreadImgDownload.class: com/visualtek/png/PNGDecoder.class Main.class server/EBitmapType.class global.class com/visualtek/png/PNGDecoder.class
+TDScaledImage.class: common/TState.class Main.class global.class TThreadImgScale.class common/TState.class

@@ -1,0 +1,33 @@
+
+                                PReDoc Daemon
+                      An Experiment with POSIX Threads
+                      
+                                   WARNING
+       This server is insecure, trashes memory and does lots of other
+         other things one wouldn't expect in a reliable bullet-proof 
+        server. It's just a demonstration and not the thing you want.
+
+           Have a look at the warning messages during compilation.
+
+                 Written & Copyright 1998 by Mark-André Hopf
+
+Description:
+------------
+
+CreateDirectories()
+    - Tries to boot from the "directory.dat" file (not implemented)
+    - creates the first directory with id 0
+
+CMD_ROOTDIRECTORY
+    - returns 0
+
+CMD_DIRECTORY_ENTRIES
+    - calls TDirectory::Write2Server:
+      - reads the directory
+      - directories receive a unique id in the global context unless
+        they're already registered (done by TDirectoryMap::GetId(..))
+      - documents receive a unique id in the directories context
+        (done by TDirectory::GetDocumentId(..)
+
+CMD_DOCUMENT_ENTRIES
+    - calls TDocument::Write2Server:

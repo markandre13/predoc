@@ -1,0 +1,1038 @@
+/*
+ *
+ * PReDoc - an editor for proof-reading digital documents
+ * Copyright (C) 1998 by Mark-André Hopf
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ *
+ */
+
+// this class is an horror to the eye, will fix this when it's complete
+
+package draw;
+
+import java.io.*;
+import java.awt.*;
+import java.awt.event.*;
+import java.util.Vector;
+import common.*;
+import draw.*;
+import Main;
+
+/**
+* This class is treated different than other figures:
+* - it can't be removed from TDrawingData
+* - it will receive keyboard events from TToolSelect
+* - when Type() equals 0 TFigCorrection will be drawn in the background
+*   otherwise in the foreground
+*/
+public class TFigCorrection
+	extends TFigure
+{
+	Image _img;						// image during editing
+	private int _type;		// correction type
+
+	public final static int SELECT_LINE = 1;
+	public final static int SELECT_RECT = 2;
+	public final static int SELECT_POLY = 3;
+	int _selection_shape;	
+	
+	public Polygon _poly;	// polygon during editing
+
+	public Point p1, p2;	// bounding rectangle of the image
+
+	int real_x1, real_y1;	// the upper, left corner of the whole correction form
+												// (doesn't equal p1 since i had to enlarge the form)
+
+	// constant parameters for the layout computation
+	//-----------------------------------------------------------------------
+	final	int distance = 3;		// distance between the lines of the boxes
+	final	int image_border=2;	// border size of the image
+	final	int form_border=2;	// border size of the form
+	final int text_border=2;	// border size of the text field
+	final int text_rows=10;
+
+	// lots of data needed by `paint(Graphics)' which is calculated once when
+	// `_types' is modified by `_ComputeLayout()'
+	//-----------------------------------------------------------------------
+	int form_w, form_h;
+	int titl_x, titl_y, titl_w, titl_h, titl_a, titl_d;
+	int img_x, img_y, img_w, img_h, img_cx;
+	boolean has_text;
+	int text_x, text_y, text_w, text_h, text_a, text_d;
+
+	TFigText _fig_text;				// we use a text figure to display the text
+	TToolDrawText _text_tool;
+
+	int mflag; 								// for `translateHandle'
+
+	// Constructor
+	//-------------------------------------------------------------------------
+	public TFigCorrection(Image img, Polygon poly, int x, int y)
+	{
+		p1=new Point(x,y);
+		p2=new Point(p1.x + img.getWidth(null), p1.y + img.getHeight(null));
+		_img		= img;
+		_type		= 0;
+		_poly		= poly;
+		_fig_text = new TFigText("",0,0);
+		_text_tool = new TToolDrawText(null, _fig_text);
+		_ComputeLayout();
+	}
+
+	public TFigCorrection()
+	{
+		p1=new Point();
+		p2=new Point();
+		_img = null;
+		_type = 0;
+		_poly = null;
+		_fig_text = new TFigText("", 0,0);
+		_text_tool = new TToolDrawText(null, _fig_text);
+		_ComputeLayout();
+	}
+
+	public void Store(DataOutputStream out, int version)
+		throws java.io.IOException
+	{
+		if (version>=2) {
+			out.writeInt(p1.x);
+			out.writeInt(p1.y);
+			out.writeInt(p2.x);
+			out.writeInt(p2.y);
+			out.writeInt(_type);
+		}
+		if (version>=3) {
+			out.writeInt(_text_tool._text.length());
+			out.writeBytes(_text_tool._text);
+		}
+	}
+	
+	public void Restore(DataInputStream in, int version)
+		throws java.io.IOException
+	{
+		if (version>=2) {
+			p1 = new Point(in.readInt(), in.readInt());
+			p2 = new Point(in.readInt(), in.readInt());
+			_type = in.readInt();
+			_ComputeLayout();
+		}
+		if (version>=3) {
+			int n = in.readInt();
+			byte buffer[] = new byte[n];
+			in.readFully(buffer);
+			_text_tool._text = new String(buffer);
+			_text_tool._cx   = 0;
+		}
+	}
+
+	public void SetType(int type)
+	{
+		_type		= type;
+		_ComputeLayout();
+	}
+
+	// correction type
+	public int Type() {
+		return _type;
+	}
+
+	// `true' when form should be draw in the foreground
+	public boolean Foreground()
+	{
+		return _foreground[_type];
+	}
+
+	public void SetImage(Image img)
+	{
+		_img = img;
+		if (_img!=null) {
+			p2.x = p1.x + img.getWidth(null);
+			p2.y = p1.y + img.getHeight(null);
+			_ComputeLayout();
+		}
+	}
+	
+	// the method `SetSelectionShape' contains to much code to be placed
+	// here
+
+	protected void _ComputeLayout()
+	{
+		if (_img==null)
+			return;
+
+		int m = _method[_type];
+		switch(m) {
+			case 1:
+			case 2:
+			case 6:
+			case 11:
+				has_text=true;
+				break;
+			default:
+				has_text=false;
+				break;
+		}
+
+		int titl_mw = 0;
+		for(int i=0; i<_names.length; i++) {
+			int w = Main.fmSansBold.stringWidth(_names[i]);
+			if (w>titl_mw)
+				titl_mw = w;
+		}
+		titl_mw+=distance*2;
+
+		titl_x = distance + form_border;
+		titl_y = distance + form_border;
+		titl_a = Main.fmSansBold.getAscent();
+		titl_d = Main.fmSansBold.getDescent();
+		titl_h = titl_a + titl_d + 2*distance;
+
+		img_x  = distance + form_border;
+		img_y  = titl_y + titl_h + distance;
+		img_w  = _img.getWidth(null)+image_border*2;
+		img_h  = _img.getHeight(null)+image_border*2;
+
+		if (img_w < titl_mw) {
+			img_cx = (titl_mw-img_w)/2;
+			titl_w = img_w = titl_mw;
+		} else {
+			img_cx = 0;
+			titl_w = img_w;
+		}
+
+		form_w = titl_x + titl_w + distance + form_border;
+		form_h = img_y+img_h+distance+form_border;
+
+		if (has_text) {
+			text_x = distance + form_border;
+			text_y = img_y+img_h+distance;
+			text_w = img_w;
+			text_h = text_rows * (Main.fmType.getAscent()+Main.fmType.getDescent()) +
+							 distance*2 + text_border*2;
+			
+			form_h += text_h + distance;
+			
+			_fig_text.p1.x = text_x+text_border+distance;
+			_fig_text.p1.y = text_y+text_border+distance;
+
+			_text_tool._x = text_x+text_border+distance;
+			_text_tool._y = text_y+text_border+distance + Main.fmType.getAscent();
+		}
+	}	
+
+	public void keyPressed(KeyEvent e)
+	{
+		_text_tool.keyPressed(e);
+	}
+
+	public void paint(Graphics pen)
+	{
+		// paint might be called because p1 was modified
+		real_x1 = p1.x-img_x-image_border-img_cx;
+		real_y1 = p1.y-img_y-image_border;
+
+		pen.translate(real_x1, real_y1);
+
+		// draw form
+		//------------------------------------------------------------------------
+		// draw form frame
+		pen.setColor(Color.black);
+		pen.fillRect(0,0,form_w, form_h);
+		pen.setColor(Color.lightGray);
+		pen.fillRect(form_border,form_border,form_w-form_border*2, form_h-form_border*2);
+
+		// draw title
+		pen.setFont(Main.fntSansBold);
+		pen.setColor(Color.black);
+		int h = Main.fmSansBold.getDescent()+Main.fmSansBold.getAscent();
+		pen.fillRect(titl_x, titl_y, titl_w, titl_h);
+		pen.setColor(Color.white);
+		pen.drawString(_names[_type], titl_x+distance, titl_y+titl_a+distance);
+		pen.setColor(Color.black);
+
+		// draw image		
+		pen.fillRect(img_x, img_y, img_w, img_h);
+
+		if (img_cx>0) {
+			pen.setColor(Color.lightGray);
+			pen.fillRect(img_x+image_border, img_y+image_border, img_w-image_border*2, img_h-image_border*2);
+			pen.setColor(Color.black);
+		}
+		
+		if (has_text) {
+			pen.fillRect(text_x, text_y, text_w, text_h);
+			pen.setColor(Color.white);
+			pen.fillRect(text_x+text_border, text_y+text_border, text_w-text_border*2, text_h-text_border*2);
+			pen.setColor(Color.red);
+//			_fig_text.paint(pen);
+			Graphics pen2 = pen.create();
+			pen2.clipRect(text_x+text_border, text_y+text_border, text_w-text_border*2, text_h-text_border*2);
+			_text_tool.paintFigure(pen2);
+			pen2.dispose();
+			pen.setColor(Color.black);
+		}
+
+		pen.drawImage(_img, img_x+image_border+img_cx, img_y+image_border, null);
+
+		// draw selection
+		//------------------------------------------------------------------------
+		pen.translate(img_x+image_border+img_cx, img_y+image_border);
+		
+		/*
+			1: Durchstreichen & Randtext
+			2: Durchstreichen & 1× unterstrichener Randtext
+			3: Durchstreichen, Delatur & Wortzwischenraumzeichen
+			4: Durchstreichen & Blockade Zeichen
+			5: Einkreisen
+			6: 1× unterstreichen, waagerechter Strich am Rand & Randtext
+			7: Umstellungszeichen oder Wortnummerierung
+			8: Oben und unten waagerecht unterstreichen
+			9: 1× unterstreichen, Doppelkreuz am Rand
+		  10: Zeilen nummerieren
+		  11: Winkelzeichen (mit Randtext)
+		  12: Zeichen ?
+		  13: Zeichen: überflüssiger Absatz (aka Absatz zusammenziehen)
+		*/
+
+System.out.println("_type:"+_type+"  _method:"+_method[_type]);
+
+		pen.setColor(Color.red);
+		switch(_method[_type]) {
+			case 1:	// Durchstreichen
+			case 2:
+			case 3:
+			case 4:
+				{
+					// This bunch of code simulates a fillPolygon with a pattern
+					// but the AWT doesn't support this; clipping is limited to 
+					// rectangular clipping regions also, without these limitations 
+					// only three lines of code would appear here, oh and another
+					// bug i spend wasting my time to remove the clipping region
+					// how to do it:
+					// (1) you must trace every translate statement in two additional
+					//     integer variables
+					// (2) translate back to the origin
+					// (3) set a really big clipping region from (0,0) to (32000,32000)
+					// (4) go back
+					// why? A negative start point is invalid and a translate beyond
+					// the original origin at (0,0) is invalid too and breaks all attempts
+					// to remove the clipping region
+					// the only way seems to duplicate the GC and to use the copy for
+					// the clipping ops'
+					Graphics pen2 = pen.create();
+					Shape oclip = pen2.getClip();	// this is always a fuckin' null
+					Draw.T2Points b = Draw.GetPolygonBounds(_poly);
+					int d = Math.max(b.x2-b.x1, b.y2-b.y1);
+					int s = 5;
+					d-=(d%s);
+					d+=(b.x1%s);
+					d+=(b.y2%s);
+					int y1, y2;
+					pen2.drawPolygon(_poly);
+					for(int i=0; i<3; i++) {
+						switch(i) {
+							case 0:
+								y1 = Math.min(_poly.ypoints[0],_poly.ypoints[4]);
+								pen2.clipRect(
+									_poly.xpoints[1], 
+									_poly.ypoints[1],
+									_poly.xpoints[2]-_poly.xpoints[1], 
+									y1-_poly.ypoints[2]);
+								break;
+							case 1:
+								if (_poly.ypoints[0]<_poly.ypoints[4]) {
+									pen2.clipRect(
+										_poly.xpoints[7],
+										_poly.ypoints[7],
+										_poly.xpoints[3] - _poly.xpoints[7],
+										_poly.ypoints[3] - _poly.ypoints[7]);
+								} else {
+									pen2.clipRect(
+										_poly.xpoints[0],
+										_poly.ypoints[4],
+										_poly.xpoints[4] - _poly.xpoints[0],
+										_poly.ypoints[0] - _poly.ypoints[4]);
+								}
+								break;
+							case 2:
+								y2 = Math.max(_poly.ypoints[7],_poly.ypoints[3]);
+								pen2.clipRect(
+									_poly.xpoints[7],
+									y2,
+									_poly.xpoints[5]-_poly.xpoints[6], 
+									_poly.ypoints[6]-y2);
+								break;
+						};
+						for(int j=b.x1-d; j<b.x2; j+=s) {
+							pen2.drawLine(j,b.y2,j+d,b.y2-d);
+						}
+						pen2.setClip(oclip);
+					}
+				}
+				break;
+			case 13:	// Zeichen: überflüssiger Absatz (aka Absatz zusammenziehen)
+				{				//----------------------------------------------------------
+					int h2;
+					int x1 = _poly.xpoints[2];
+					int y1 = (_poly.ypoints[0]-_poly.ypoints[1])/2+_poly.ypoints[1];
+					int x2 = x1;
+					int y2 = (_poly.ypoints[4]-_poly.ypoints[0])/2+_poly.ypoints[0];
+					int x3 = _poly.xpoints[7];
+					int y3 = y2;
+					int x4 = x3;
+					int y4 = (_poly.ypoints[5]-_poly.ypoints[4])/2+_poly.ypoints[4];
+					
+					h=y2-y1; h2=h/2;
+					pen.drawArc(x1-h2,y1,h,h, 270, 180);
+					pen.drawLine(x3,y3, x2,y2);
+					h=y4-y3; h2=h/2;
+					pen.drawArc(x3-h2,y3, h,h, 90, 180);
+				}
+				break;
+			default:
+				pen.drawPolygon(_poly);
+				break;
+		}
+
+		switch(_method[_type]) {
+			case 4: // Blockade
+				{
+					int x2 = img_w-image_border*2-distance;
+					int x1 = x2-10;
+					int y1 = _poly.ypoints[1];
+					int y2 = _poly.ypoints[5];
+					pen.drawLine(x1,y1,x2,y1);
+					pen.drawLine(x1,y1,x2,y2);
+					pen.drawLine(x1,y1,x1,y2);
+					pen.drawLine(x1,y2,x2,y1);
+					pen.drawLine(x1,y2,x2,y2);
+					pen.drawLine(x2,y1,x2,y2);
+				}
+				break;
+			case 3: // Delatur
+				{
+					double[] x={0,25,67,78,84,174,247,336,134,133,129,164,113,90,42,9};
+					double[] y={188,298,178,151,217,246,166,51,-139,165,257,455,492,505,513,419};
+					Draw.T2Points sb = Draw.GetPolyBezierBounds(x,y);
+					int x2 = img_w-image_border*2-distance;
+					int x1 = x2-10;
+					int y1 = _poly.ypoints[1];
+					int y2 = _poly.ypoints[5];
+					double sw = sb.x2-sb.x1;
+					double sh = sb.y2-sb.y1;
+					double mw = x2-x1;
+					double mh = y2-y1;
+					Draw.SetContext(pen);
+					Draw.GSave();
+					Draw.Translate(x1,y1);
+//Draw.MoveTo(x[0]/mw*sw,y[0]/mw*sw);
+					Draw.DrawBezier(x,y, mw/sw, mh/sh);
+					Draw.GRestore();
+				}
+		}
+
+		pen.translate(-p1.x, -p1.y);
+		pen.setColor(Color.red);
+	}
+
+	public void SetSelectionShape(int type)
+	{
+		_selection_shape = type;
+
+		// there's some strange behaviour in Polygon.getBounds so we have to
+		// calculate the bounding on our own: (Uuh, i currently don't know
+		// what it was... so someone might check this piece of code again.)
+		int min_x, max_x, min_y, max_y;
+		min_x = max_x = _poly.xpoints[0];
+		min_y = max_y = _poly.ypoints[0];
+		for(int i=1; i<_poly.npoints; i++) {
+			if (min_x > _poly.xpoints[i])
+				min_x = _poly.xpoints[i];
+			if (max_x < _poly.xpoints[i])
+				max_x = _poly.xpoints[i];
+			if (min_y > _poly.ypoints[i])
+				min_y = _poly.ypoints[i];
+			if (max_y < _poly.ypoints[i])
+				max_y = _poly.ypoints[i];
+		}
+
+		switch(_selection_shape) {
+			case SELECT_LINE:
+				for(int i=0; i<_poly.npoints; i++) {
+					_poly.xpoints[i] = min_x;
+					if (i==7 || i<=2) {
+						_poly.ypoints[i] = min_y;
+					} else {
+						_poly.ypoints[i] = max_y;
+					}
+				}
+				break;
+			case SELECT_RECT:
+				_poly.xpoints[7] = _poly.xpoints[0] = _poly.xpoints[1] = min_x;
+				_poly.ypoints[7] = _poly.ypoints[0] = _poly.ypoints[1] = min_y;
+				_poly.xpoints[2] = max_x;
+				_poly.ypoints[2] = min_y;
+				_poly.xpoints[3] = _poly.xpoints[4] = _poly.xpoints[5] = max_x;
+				_poly.ypoints[3] = _poly.ypoints[4] = _poly.ypoints[5] = max_y;
+				_poly.xpoints[6] = min_x;
+				_poly.ypoints[6] = max_y;
+				break;
+			case SELECT_POLY:
+				break;
+		}
+	}
+	
+	public void paintHandles(Graphics pen)
+	{
+		pen.drawRect(real_x1-1, real_y1-1, form_w+1, form_h+1);
+		pen.translate(p1.x, p1.y);
+		for(int i=0; i<_poly.npoints; i++) {
+			drawHandle(pen, _poly.xpoints[i], _poly.ypoints[i]);
+		}
+		if (has_text) {
+			Graphics pen2 = pen.create();
+			pen2.translate(-img_x-image_border, -img_y-image_border);
+			pen2.clipRect(text_x+text_border, text_y+text_border, text_w-text_border*2, text_h-text_border*2);
+			_text_tool.paintSelection(pen2);
+			// pen.translate(img_x+image_border, img_y+image_border);
+		}
+		pen.translate(-p1.x, -p1.y);
+	}
+	
+	public int getHandle(double x, double y)
+	{
+		x-=p1.x;
+		y-=p1.y;
+		for(int i=0; i<_poly.npoints; i++) {
+			if (isInHandle(_poly.xpoints[i], _poly.ypoints[i], x,y)) {
+				mflag = 0;
+				return i;
+			}
+		}
+		return -1;
+	}
+
+	public Point getHandlePosition(int h)
+	{
+		return new Point(_poly.xpoints[h]+p1.x, _poly.ypoints[h]+p1.y);
+	}
+
+	public void translateHandle(int handle, int nx, int ny)
+	{
+		if (nx<p1.x) nx = p1.x; else if (nx>p2.x) nx = p2.x;
+		if (ny<p1.y) ny = p1.y; else if (ny>p2.y) ny = p2.y;
+		nx-=p1.x; ny-=p1.y;
+
+		switch(mflag) {
+			case 0:
+				int _nx = _poly.xpoints[handle];
+				int _ny = _poly.ypoints[handle];
+				if (_nx!=nx) {
+					switch(handle) {
+						case 0: case 1: case 6: case 7:
+							TDrawingArea.SetCursor(Cursor.E_RESIZE_CURSOR);
+							break;
+						default:
+							TDrawingArea.SetCursor(Cursor.W_RESIZE_CURSOR);
+					}
+					mflag = 2;	// resizing horizontal
+				} else {
+					switch(handle) {
+						case 0: case 1: case 2: case 7:
+							TDrawingArea.SetCursor(Cursor.S_RESIZE_CURSOR);
+							break;
+						default:
+							TDrawingArea.SetCursor(Cursor.N_RESIZE_CURSOR);
+					}
+					mflag = 3;	// resizing vertical
+				}
+				break;
+		}
+
+		switch(mflag) {
+			case 2:
+				ny = _poly.ypoints[handle];
+				break;
+			case 3:
+				nx = _poly.xpoints[handle];
+				break;
+		}
+
+		switch(_selection_shape) {
+			case SELECT_LINE:
+				for(int i=0; i<_poly.npoints; i++) {
+					if (mflag==2) {
+						_poly.xpoints[i] = nx;
+					} else {
+						if (handle==7 || handle<=2) {
+							if (i==7 || i<=2)
+								_poly.ypoints[i] = ny;
+						} else {
+							if (i>=3 && i<=6)
+								_poly.ypoints[i] = ny;
+						}
+					}
+				}
+				break;
+			case SELECT_RECT:
+				switch(handle) {
+					case 7: case 0: case 1:
+						_poly.xpoints[7] = nx;
+						_poly.ypoints[7] = ny;
+						_poly.xpoints[0] = nx;
+						_poly.ypoints[0] = ny;
+						_poly.xpoints[1] = nx;
+						_poly.ypoints[1] = ny;
+						if (mflag==2) {
+							_poly.xpoints[6] = nx;
+						} else {
+							_poly.ypoints[2] = ny;
+						}
+						break;
+					case 3: case 4: case 5:
+						_poly.xpoints[3] = nx;
+						_poly.ypoints[3] = ny;
+						_poly.xpoints[4] = nx;
+						_poly.ypoints[4] = ny;
+						_poly.xpoints[5] = nx;
+						_poly.ypoints[5] = ny;
+						if (mflag==2) {
+							_poly.xpoints[2] = nx;
+						} else {
+							_poly.ypoints[6] = ny;
+						}
+						break;
+					case 2:
+						_poly.xpoints[handle] = nx;
+						_poly.ypoints[handle] = ny;
+						if (mflag==2) {
+							_poly.xpoints[3] = _poly.xpoints[4] = _poly.xpoints[5] = nx;
+						} else {
+							_poly.ypoints[7] = _poly.ypoints[0] = _poly.ypoints[1] = ny;
+						}
+						break;
+					case 6:
+						_poly.xpoints[handle] = nx;
+						_poly.ypoints[handle] = ny;
+						if (mflag==2) {
+							_poly.xpoints[7] = _poly.xpoints[0] = _poly.xpoints[1] = nx;
+						} else {
+							_poly.ypoints[3] = _poly.ypoints[4] = _poly.ypoints[5] = ny;
+						}
+						break;
+				}
+				if (_poly.xpoints[6]>_poly.xpoints[2]) {
+					int l = _poly.xpoints[2];
+					int r = _poly.xpoints[6];
+					_poly.xpoints[6] = _poly.xpoints[7] = _poly.xpoints[0] = _poly.xpoints[1] = l;
+					_poly.xpoints[2] = _poly.xpoints[3] = _poly.xpoints[4] = _poly.xpoints[5] = r;
+				}
+				if (_poly.ypoints[7]>_poly.ypoints[3]) {
+					int t = _poly.ypoints[3];
+					int b = _poly.ypoints[7];
+					_poly.ypoints[7] = _poly.ypoints[0] = _poly.ypoints[1] = _poly.ypoints[2] = t;
+					_poly.ypoints[3] = _poly.ypoints[4] = _poly.ypoints[5] = _poly.ypoints[6] = b;
+				}
+				break;
+
+			case SELECT_POLY:
+				// i know one can make it with fewer code but i don't have the time
+				// to do it; just imagine i'm an old IBM programmer getting paid
+				// per ten lines of code ;)
+				_poly.xpoints[handle] = nx;
+				_poly.ypoints[handle] = ny;
+
+				switch(handle) {
+					case 0:
+						_poly.xpoints[1] = nx;
+						_poly.ypoints[7] = ny;
+						if (nx>_poly.xpoints[2]) {
+							_poly.xpoints[2]=nx;
+							_poly.xpoints[3]=nx;
+						}
+						if (ny>_poly.ypoints[5]) {
+							_poly.ypoints[5]=ny;
+							_poly.ypoints[6]=ny;
+						}
+						if (ny<_poly.ypoints[1]) {
+							_poly.ypoints[1]=ny;
+							_poly.ypoints[2]=ny;
+						}
+						if (nx>_poly.xpoints[4] && ny>_poly.ypoints[4]) {
+							switch(mflag) {
+								case 3:
+									_poly.ypoints[3]=ny;
+									_poly.ypoints[4]=ny;
+									break;
+								case 2:
+									_poly.xpoints[4]=nx;
+									_poly.xpoints[5]=nx;
+									break;
+							}
+						}
+						break;
+					case 1:
+						_poly.xpoints[0] = nx;
+						_poly.ypoints[2] = ny;
+						if (nx>_poly.xpoints[2]) {
+							_poly.xpoints[2] = nx;
+							_poly.xpoints[3] = nx;
+						}
+						if (ny>_poly.ypoints[7]) {
+							_poly.ypoints[7] = ny;
+							_poly.ypoints[0] = ny;
+						}
+						switch(mflag) {
+							case 2:
+								if (_poly.ypoints[0]>_poly.ypoints[4] && nx>_poly.xpoints[4]) {
+									_poly.xpoints[4]=nx;
+									_poly.xpoints[5]=nx;
+								}
+								break;
+							case 3:
+								if (ny>_poly.ypoints[3]) {
+									_poly.ypoints[3] = ny;
+									_poly.ypoints[4] = ny;
+								}
+								if (ny>_poly.ypoints[6]) {
+									 _poly.ypoints[6] = ny;
+									 _poly.ypoints[7] = ny;
+								}
+								break;
+						}
+						break;
+					case 2:
+						_poly.xpoints[3] = nx;
+						_poly.ypoints[1] = ny;
+						if (ny>_poly.ypoints[7]) {
+							_poly.ypoints[7] = ny;
+							_poly.ypoints[0] = ny;
+						}
+						if (ny>_poly.ypoints[3]) {
+							_poly.ypoints[3] = ny;
+							_poly.ypoints[4] = ny;
+						}
+						if (ny>_poly.ypoints[5]) {
+							_poly.ypoints[5] = ny;
+							_poly.ypoints[6] = ny;
+						}
+						if (nx<_poly.xpoints[0]) {
+							_poly.xpoints[0] = nx;
+							_poly.xpoints[1] = nx;
+						}
+						if (nx<_poly.xpoints[6] && _poly.ypoints[3]>_poly.ypoints[7]) {
+							_poly.xpoints[6] = nx;
+							_poly.xpoints[7] = nx;
+						}
+						break;
+					case 3:
+						_poly.xpoints[2] = nx;
+						_poly.ypoints[4] = ny;
+						if (ny>_poly.ypoints[5]) {
+							_poly.ypoints[5] = ny;
+							_poly.ypoints[6] = ny;
+						}
+						if (nx<_poly.xpoints[0]) {
+							_poly.xpoints[0] = nx;
+							_poly.xpoints[1] = nx;
+						}
+						if (ny<_poly.ypoints[1]) {
+							_poly.ypoints[1] = ny;
+							_poly.ypoints[2] = ny;
+						}
+						if ( _poly.xpoints[3]<_poly.xpoints[6] && 
+								 _poly.ypoints[3]>_poly.ypoints[7])
+						{
+							if (mflag==2) {
+								_poly.xpoints[6] = nx;
+								_poly.xpoints[7] = nx;
+							} else {
+								_poly.ypoints[7] = ny;
+								_poly.ypoints[0] = ny;
+							}
+						}
+						break;
+					case 4:
+						_poly.xpoints[5] = nx;
+						_poly.ypoints[3] = ny;
+						if (ny<_poly.ypoints[1]) {
+							_poly.ypoints[1] = ny;
+							_poly.ypoints[2] = ny;
+						}
+						if (ny>_poly.ypoints[5]) {
+							_poly.ypoints[5] = ny;
+							_poly.ypoints[6] = ny;
+						}
+						if (nx<_poly.xpoints[6]) {
+							_poly.xpoints[6] = nx;
+							_poly.xpoints[7] = nx;
+						}
+						if (_poly.xpoints[4]<_poly.xpoints[0] && 
+								_poly.ypoints[4]<_poly.ypoints[0])
+						{
+							if (mflag==2) {
+								_poly.xpoints[0] = nx;
+								_poly.xpoints[1] = nx;
+							} else {
+								_poly.ypoints[7] = ny;
+								_poly.ypoints[0] = ny;
+							}
+						}
+						break;
+					case 5:
+						_poly.xpoints[4] = nx;
+						_poly.ypoints[6] = ny;
+						if (ny<_poly.ypoints[1]) {
+							_poly.ypoints[1] = ny;
+							_poly.ypoints[2] = ny;
+						}
+						if (ny<_poly.ypoints[3]) {
+							_poly.ypoints[3] = ny;
+							_poly.ypoints[4] = ny;
+						}
+						if (ny<_poly.ypoints[7]) {
+							_poly.ypoints[7] = ny;
+							_poly.ypoints[0] = ny;
+						}
+						if (nx<_poly.xpoints[6]) {
+							_poly.xpoints[6] = nx;
+							_poly.xpoints[7] = nx;
+						}
+						if (_poly.xpoints[5]<_poly.xpoints[0] &&
+								_poly.ypoints[4]<_poly.ypoints[0])
+						{
+							 _poly.xpoints[0] = nx;
+							 _poly.xpoints[1] = nx;
+						}
+						break;
+					case 6:
+						_poly.xpoints[7] = nx;
+						_poly.ypoints[5] = ny;
+						if (nx>_poly.xpoints[4]) {
+							_poly.xpoints[4]=nx;
+							_poly.xpoints[5]=nx;
+						}
+						if (ny<_poly.ypoints[7]) {
+							_poly.ypoints[7] = ny;
+							_poly.ypoints[0] = ny;
+						}
+						if (ny<_poly.ypoints[3]) {
+							_poly.ypoints[3] = ny;
+							_poly.ypoints[4] = ny;
+						}
+						if (ny<_poly.ypoints[1]) {
+							_poly.ypoints[1] = ny;
+							_poly.ypoints[2] = ny;
+						}
+						if (_poly.xpoints[6]>_poly.xpoints[2] && 
+								_poly.ypoints[7]<_poly.ypoints[3]) 
+						{
+							_poly.xpoints[2]=nx;
+							_poly.xpoints[3]=nx;
+						}
+						break;
+					case 7:
+						_poly.xpoints[6] = nx;
+						_poly.ypoints[0] = ny;
+						if (ny<_poly.ypoints[1]) {
+							_poly.ypoints[1] = ny;
+							_poly.ypoints[2] = ny;
+						}
+						if (ny>_poly.ypoints[5]) {
+							_poly.ypoints[5] = ny;
+							_poly.ypoints[6] = ny;
+						}
+						if (nx>_poly.xpoints[4]) {
+							_poly.xpoints[4]=nx;
+							_poly.xpoints[5]=nx;
+						}
+						if (_poly.xpoints[7]>_poly.xpoints[3] &&
+								_poly.ypoints[7]<_poly.ypoints[3] )
+						{
+							if (mflag==2) {
+								_poly.xpoints[2]=nx;
+								_poly.xpoints[3]=nx;
+							} else {
+								_poly.ypoints[3] = ny;
+								_poly.ypoints[4] = ny;
+							}
+						}
+					break;
+			}
+		}
+	}
+	
+	public double Distance(int x, int y)
+	{
+		return (real_x1<=x && x<=real_x1+form_w && 
+						real_y1<=y && y<=real_y1+form_h) ? RANGE : OUT_OF_RANGE;
+	}
+	
+	public Point getRefPoint(int x, int y)
+	{
+		 return new Point(x-p1.x, y-p1.y);
+	}
+	
+	public void getBounding(Point q1, Point q2)
+	{
+		q1.x = real_x1; 					q1.y = real_y1;
+		q2.x = real_x1+form_w; ;	q2.y = real_y1+form_h;
+	}
+	
+	public void translate(Point ref, int x, int y)
+	{
+		int dx,dy;
+		dx = p2.x-p1.x;
+		dy = p2.y-p1.y;
+		p1.x = x-ref.x;
+		p1.y = y-ref.y;
+		p2.x = p1.x+dx;
+		p2.y = p1.y+dy;
+	}
+
+	// names for the corrections types
+	//-------------------------------------------------------------------------
+	final private static String _names[] = {
+		"Freihand",																					// 0
+		"falsche Buchstaben",																// 1
+		"falsche Wörter",																		// 2
+		"überflüssige Buchstaben",													// 3
+		"überflüssige Wörter",															// 4
+		"fehlende Buchstaben",															// 5
+		"fehlende Satzzeichen",															// 6
+		"überflüssige Satzzeichen",													// 7
+		"beschädigte Buchstaben",														// 8
+		"falsche Schrift (umgebende Schrift verwenden)",		// 9
+		"verschmutzte und zu stark gedruckte Buchstaben",		// 10
+		"neu zu setzende Zeilen",														// 11
+		"fehlende Ligatur",																	// 12
+		"überflüssige Ligatur",															// 13
+		"verstellte Buchstaben",														// 14
+		"verstellte Wörter",																// 15
+		"verstellte Zahlen",																// 16
+		"fehlende Wörter",																	// 17
+		"falsche Trennung",																	// 18
+		"fehlender Freiraum",																// 19
+		"zu enger Freiraum",																// 20
+		"zu weiter Freiraum",																// 21
+		"überflüssiger Freiraum",														// 22
+		"falsche Schrift (gewünschte Schrift angeben)",			// 23
+		"fehlende Sperrung",																// 24
+		"überflüssige Sperrung",														// 25
+		"falsch Linie haltende Stelle",											// 26
+		"überflüssig mitgedruckte Stelle",									// 27
+		"fehlender Absatz",																	// 28
+		"überflüssiger Absatz",															// 29
+		"überflüssiger oder zu großer Einzug",							// 30
+		"fehlender oder zu kleiner Einzug",									// 31
+		"verstellte Zeilen",																// 32
+		"fehlender Durchschuß",															// 33
+		"zu großer Durchschuß",															// 34
+		"Erklärung zur Korrektur",													// 35
+		"unleserliche oder zweifelhafte Stelle",						// 36
+		"falsche Korrektur"																	// 37
+	};
+
+	final private static boolean _foreground[] = {
+		false,	// 0
+		true,		// 1
+		true,		// 2
+		true,		// 3
+		true,		// 4
+		true,		// 5
+		true,		// 6
+		true,		// 7
+		true,		// 8
+		true,		// 9
+		true,		// 10
+		true,		// 11
+		true,		// 12
+		true,		// 13
+		true,		// 14
+		false,	// 15
+		true,		// 16
+		true,		// 17
+		true,		// 18
+		true,		// 19
+		true,		// 20
+		true,		// 21
+		true,		// 22
+		true,		// 23
+		true,		// 24
+		true,		// 25
+		true,		// 26
+		true,		// 27
+		true,		// 28
+		true,		// 29
+		true,		// 30
+		true,		// 31
+		false,	// 32
+		true,		// 33
+		true,		// 34
+		true,		// 35
+		true,		// 36
+		true,		// 37
+	};
+	
+	public static String[] Names()
+	{
+		return _names;
+	}
+
+	int _method[] = {
+		0,			// 0 (freehand)
+		1,			// 1
+		1,			// 2
+		3,			// 3
+		3,			// 4
+		1,			// 5
+		1,			// 6
+		3,			// 7
+		2,			// 8
+		2,			// 9
+		5,			// 10
+		6,			// 11
+		12,			// 12
+		12,			// 13
+		1,			// 14
+		7,			// 15
+		1,			// 16
+		11,			// 17
+		1,			// 18
+		12,			// 19
+		12,			// 20
+		12,			// 21
+		12,			// 22
+		6,			// 23
+		6,			// 24
+		6,			// 25
+		8,			// 26
+		9,			// 27
+		12,			// 28
+		13,			// 29
+		12,			// 30
+		12,			// 31
+		10,			// 32
+		12,			// 33
+		12,			// 34
+		11,			// 35
+		4,			// 36
+		12,			// 37
+		12,			// 38
+		12			// 39
+	};
+
+}

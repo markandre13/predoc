@@ -1,0 +1,44 @@
+dnl ********************************************************************
+dnl *                     TOAD - a thing on a desktop                  *
+dnl *                                                                  *
+dnl * Process this file with autoconf to produce a configure script.   *
+dnl * written 1996-98 by Mark-André Hopf                               *
+dnl ********************************************************************
+
+AC_INIT(library_locator.sh)
+
+dnl *** CHECK FOR JAVA COMPILER ***
+
+AC_CHECK_PROGS(JAVAC, jikes, javac) 
+
+dnl *** CHECK FOR C++ COMPILER AND OTHER PROGS ***
+
+AC_PROG_CXX
+
+dnl Check for number of CPUs (Linux only)
+dnl --------------------------------------------------------------------------
+echo -n "checking for SMP..."
+if test -f /proc/cpuinfo; then
+	ncpu=`grep -c processor /proc/cpuinfo`
+	if test $ncpu -le 0 ; then
+		ncpu=1
+	fi
+else
+	ncpu=1
+fi
+
+if test 1 -eq $ncpu; then
+	make="make"
+	echo "  no"
+else
+	make="make -j $ncpu"
+	echo "  found $ncpu CPUs, using parallel make"
+fi
+
+AC_SUBST(make)
+
+library_locator.sh
+
+dnl *** CREATE MASTER MAKEFILES ***
+
+AC_OUTPUT(../client/Makefile ../server/Makefile)
